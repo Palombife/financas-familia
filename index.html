@@ -75,7 +75,7 @@ input[type=text],input[type=date],input[type=number],input[type=search],select{w
 </style>
 </head>
 <body>
-<header><h1 style="display:flex;justify-content:space-between;align-items:center">💚 Nossas Finanças <small id="sy" style="font-size:12px;font-weight:500;background:rgba(255,255,255,.18);padding:3px 9px;border-radius:12px" hidden></small></h1>
+<header><h1 style="display:flex;justify-content:space-between;align-items:center">💚 Nossas Finanças <small id="sy" data-act="gosync" style="cursor:pointer;font-size:12px;font-weight:500;background:rgba(255,255,255,.18);padding:3px 9px;border-radius:12px" hidden></small></h1>
   <div class="mnav"><button data-act="prev" aria-label="Mês anterior">‹</button><span id="mlabel"></span><button data-act="next" aria-label="Próximo mês">›</button></div>
 </header>
 <main id="app"></main>
@@ -409,34 +409,41 @@ function exportCSV(){const q=v=>`"${String(v).replace(/"/g,'""')}"`;const rows=[
  download(`financas-${today()}.csv`,'﻿'+rows.map(r=>r.map(q).join(';')).join('\r\n'),'text/csv')}
 
 
-/* ---------- sincronização em nuvem (Firebase) ---------- */
+/* ---------- sincronização em nuvem (Firebase, login Google / e-mail) ---------- */
 const SK='nossas-financas.sync',FBV='10.12.2';
-let SY=(()=>{try{return JSON.parse(localStorage.getItem(SK))}catch(e){return null}})();
-let fb=null,sync={st:SY?'connecting':'none'},pushed={tx:{},set:''},ready=false,pushing=false,again=false,pt;
+let SY=(()=>{try{const d=JSON.parse(localStorage.getItem(SK));return d&&d.config?d:null}catch(e){return null}})();
+let fb=null,fs0=null,auth0=null,user=null,started=false,sync={st:SY?'connecting':'none',err:''},pushed={tx:{},set:''},ready=false,pushing=false,again=false,pt;
 const loadJS=src=>new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('load '+src));document.head.appendChild(s)});
 const hsh=t=>{const {id,...r}=t;return JSON.stringify(r,Object.keys(r).sort())};
 const setts=()=>({budgets:db.budgets,people:db.people,goal:db.goal||null,learn:db.learn});
 const editing=()=>{const a=document.activeElement;return a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)&&a.closest('#app')};
-const newCode=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>(b%36).toString(36)).join('');
-const invite=()=>btoa(JSON.stringify({config:SY.config,code:SY.code}));
+const invite=()=>btoa(JSON.stringify({config:SY.config}));
 function parseConfig(txt){txt=txt.trim();
- try{const d=JSON.parse(atob(txt.replace(/\s/g,'')));if(d.config&&d.config.apiKey&&d.code)return d}catch(e){}
+ try{const d=JSON.parse(atob(txt.replace(/\s/g,'')));if(d.config&&d.config.apiKey)return {config:d.config}}catch(e){}
  const config={};for(const k of ['apiKey','authDomain','projectId','storageBucket','messagingSenderId','appId']){const m=txt.match(new RegExp(k+'["\']?\\s*:\\s*["\']([^"\']+)["\']'));if(m)config[k]=m[1]}
  return config.apiKey&&config.projectId?{config}:null}
-function setSt(st,err){sync.st=st;if(err)console.error(err);const el=$('#sy');if(el){el.hidden=st==='none';el.textContent=({connecting:'☁️ conectando…',ok:'☁️ sincronizado',err:'⚠️ sem sincronizar'})[st]||''}
+const PILL={connecting:'☁️ conectando…',login:'🔑 entrar',verify:'✉️ confirmar e-mail',ok:'☁️ sincronizado',err:'⚠️ sem sincronizar'};
+function setSt(st,err){sync.st=st;sync.err=err?(err.code||err.message||String(err)):'';if(err)console.error(err);
+ const el=$('#sy');if(el){el.hidden=st==='none';el.textContent=PILL[st]||''}
  if(view==='more'&&!editing())render()}
+const authErr=e=>({'auth/invalid-credential':'E-mail ou senha incorretos','auth/wrong-password':'Senha incorreta','auth/user-not-found':'Não há conta com esse e-mail — toque em Criar conta','auth/email-already-in-use':'Esse e-mail já tem conta — toque em Entrar','auth/weak-password':'A senha precisa ter 6+ caracteres','auth/invalid-email':'E-mail inválido','auth/missing-password':'Digite a senha','auth/popup-blocked':'O navegador bloqueou a janela do Google. Use e-mail e senha.','auth/popup-closed-by-user':'Login cancelado','auth/cancelled-popup-request':'Login cancelado','auth/unauthorized-domain':'Adicione palombife.github.io em Authentication › Settings › Authorized domains','auth/operation-not-allowed':'Ative esse método em Authentication › Sign-in method','auth/network-request-failed':'Sem internet','auth/too-many-requests':'Muitas tentativas. Espere um pouco.'})[e.code]||e.message;
 async function startSync(){
  if(!SY)return setSt('none');setSt('connecting');
  try{
   if(!window.firebase){const b=`https://www.gstatic.com/firebasejs/${FBV}/`;await loadJS(b+'firebase-app-compat.js');await Promise.all([loadJS(b+'firebase-auth-compat.js'),loadJS(b+'firebase-firestore-compat.js')])}
   firebase.initializeApp(SY.config);
-  await firebase.auth().signInAnonymously();
-  const fs=firebase.firestore();try{await fs.enablePersistence({synchronizeTabs:true})}catch(e){}
-  fb={fs,base:fs.collection('families').doc(SY.code)};
-  let first=true;
-  fb.base.collection('tx').onSnapshot(snap=>{applyTx(snap,first);if(first){first=false;queuePush()}setSt('ok')},e=>setSt('err',e));
-  fb.base.collection('meta').doc('settings').onSnapshot(d=>{if(d.metadata.hasPendingWrites)return;if(d.exists)applySettings(d.data());ready=true;queuePush()},e=>setSt('err',e));
+  auth0=firebase.auth();fs0=firebase.firestore();
+  try{await fs0.enablePersistence({synchronizeTabs:true})}catch(e){}
+  auth0.onAuthStateChanged(u=>{user=u;gate()});
  }catch(e){setSt('err',e)}
+}
+function gate(){if(!user)return setSt('login');if(!user.emailVerified)return setSt('verify');begin()}
+function begin(){
+ if(started)return;started=true;setSt('connecting');
+ const base=fs0.collection('casal').doc('main');fb={fs:fs0,base};
+ let first=true;
+ base.collection('tx').onSnapshot(snap=>{applyTx(snap,first);if(first){first=false;queuePush()}setSt('ok')},e=>setSt('err',e));
+ base.collection('meta').doc('settings').onSnapshot(d=>{if(d.metadata.hasPendingWrites)return;if(d.exists)applySettings(d.data());ready=true;queuePush()},e=>setSt('err',e));
 }
 function applyTx(snap,first){let ch=false;
  snap.docChanges().forEach(c=>{const id=c.doc.id;
@@ -465,25 +472,48 @@ async function push(){
 async function cloudImgPut(id,data){if(!fb)return;if(data.length>950000)return toast('Foto grande demais para sincronizar');try{await fb.base.collection('img').doc(id).set({d:data})}catch(e){}}
 async function cloudImgGet(id){if(!fb)return null;try{const d=await fb.base.collection('img').doc(id).get();return d.exists?d.data().d:null}catch(e){return null}}
 async function cloudImgDel(id){if(!fb)return;try{await fb.base.collection('img').doc(id).delete()}catch(e){}}
+/* conexão e login */
 function connect(){const p=parseConfig($('#sy-in').value||'');if(!p)return toast('Não reconheci essa configuração');
- const code=p.code||($('#sy-code').value.trim()||newCode());if(!/^[A-Za-z0-9_-]{12,}$/.test(code))return toast('O código precisa ter 12+ letras/números');
- SY={config:p.config,code};localStorage.setItem(SK,JSON.stringify(SY));location.reload()}
-function disconnect(){if(!confirm('Desligar a sincronização neste celular? Seus dados continuam aqui.'))return;localStorage.removeItem(SK);location.reload()}
+ SY={config:p.config};localStorage.setItem(SK,JSON.stringify(SY));location.reload()}
+async function disconnect(){if(!confirm('Desligar a sincronização neste celular? Seus dados continuam aqui.'))return;try{await auth0?.signOut()}catch(e){}localStorage.removeItem(SK);location.reload()}
+const cred=()=>({em:($('#au-em')?.value||'').trim().toLowerCase(),pw:$('#au-pw')?.value||''});
+async function login(){const {em,pw}=cred();if(!em)return toast('Digite o e-mail');try{await auth0.signInWithEmailAndPassword(em,pw)}catch(e){toast(authErr(e))}}
+async function signup(){const {em,pw}=cred();if(!em)return toast('Digite o e-mail');try{const c=await auth0.createUserWithEmailAndPassword(em,pw);await c.user.sendEmailVerification();toast('Enviamos um e-mail de confirmação ✉️')}catch(e){toast(authErr(e))}}
+async function gauth(){try{await auth0.signInWithPopup(new firebase.auth.GoogleAuthProvider())}catch(e){toast(authErr(e))}}
+async function resetpw(){const {em}=cred();if(!em)return toast('Digite o e-mail primeiro');try{await auth0.sendPasswordResetEmail(em);toast('Enviei o link para redefinir a senha')}catch(e){toast(authErr(e))}}
+async function verified(){try{await user.reload();await user.getIdToken(true);user=auth0.currentUser;if(user.emailVerified)gate();else toast('Ainda não confirmado. Abra o e-mail e toque no link.')}catch(e){toast(authErr(e))}}
+async function resend(){try{await user.sendEmailVerification();toast('E-mail reenviado ✉️')}catch(e){toast(authErr(e))}}
+async function logout(){try{await auth0.signOut()}catch(e){}location.reload()}
 async function copyinv(){const v=invite();try{await navigator.clipboard.writeText(v);toast('Convite copiado ✔')}catch(e){const t=$('#sy-inv');t.select();document.execCommand('copy');toast('Convite copiado ✔')}}
-function wainv(){window.open('https://wa.me/?text='+encodeURIComponent('Convite para o app Nossas Finanças. Abra o app, vá em Mais > Sincronização e cole isto:\n\n'+invite()),'_blank')}
+function wainv(){window.open('https://wa.me/?text='+encodeURIComponent('Para sincronizar o Nossas Finanças: abra o app > Mais > Sincronização, cole este convite e toque em Conectar. Depois entre com seu e-mail ou Google.\n\n'+invite()),'_blank')}
 function syncCard(){
- if(SY)return `<div class="card"><h2>☁️ Sincronização</h2>
-  <p style="margin:0 0 8px">Status: <b>${({connecting:'conectando…',ok:'<span class="inc">sincronizado ✔</span>',err:'<span class="exp">com problema — confira a configuração e a internet</span>'})[sync.st]||''}</b></p>
+ const TA='style="width:100%;font-size:12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--tx);padding:8px"';
+ if(!SY)return `<div class="card"><h2>☁️ Sincronização entre os celulares</h2>
+  <p class="hint" style="margin:0 0 8px">Ligue uma vez e tudo que um lançar aparece no outro, com fotos. Precisa de um projeto Firebase gratuito — passo a passo em <b>CONFIGURAR-FIREBASE.md</b>. Sua esposa/marido só cola o <b>convite</b> que você enviar.</p>
+  <label>Cole aqui a configuração do Firebase <u>ou</u> o convite</label>
+  <textarea id="sy-in" rows="4" placeholder='const firebaseConfig = { apiKey: "...", ... }' ${TA}></textarea>
+  <button class="btn block" style="margin-top:12px" data-act="connect">Conectar</button></div>`;
+ const st=sync.st,off=`<button class="btn sec block" style="margin-top:10px" data-act="disconnect">Desligar neste celular</button>`;
+ if(st==='login')return `<div class="card"><h2>🔑 Entrar</h2>
+  <p class="hint" style="margin:0 0 8px">Entre com a sua conta. Só os e-mails liberados nas regras do Firebase conseguem acessar os dados.</p>
+  <button class="btn block" data-act="gauth">Entrar com Google</button>
+  <p class="hint" style="text-align:center">ou com e-mail e senha</p>
+  <input type="text" id="au-em" inputmode="email" autocapitalize="off" autocomplete="username" placeholder="seu@email.com">
+  <input type="password" id="au-pw" autocomplete="current-password" placeholder="Senha (6+ caracteres)" style="margin-top:8px;width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--tx)">
+  <div class="two" style="margin-top:10px"><button class="btn" data-act="login">Entrar</button><button class="btn sec" data-act="signup">Criar conta</button></div>
+  <button class="btn sec block" style="margin-top:8px;border:0" data-act="resetpw">Esqueci a senha</button>${off}</div>`;
+ if(st==='verify')return `<div class="card"><h2>✉️ Confirme seu e-mail</h2>
+  <p style="margin:0 0 10px">Enviamos um link para <b>${esc(user?.email||'')}</b>. Abra o e-mail, toque no link e volte aqui. (Veja também o spam.)</p>
+  <button class="btn block" data-act="verified">Já confirmei</button>
+  <div class="two" style="margin-top:8px"><button class="btn sec" data-act="resend">Reenviar e-mail</button><button class="btn sec" data-act="logout">Trocar de conta</button></div></div>`;
+ const msg=sync.err==='permission-denied'?'Seu e-mail não está liberado nas regras do Firebase (passo 3 do guia).':sync.err;
+ return `<div class="card"><h2>☁️ Sincronização</h2>
+  <p style="margin:0 0 4px">Status: <b>${({connecting:'conectando…',ok:'<span class="inc">sincronizado ✔</span>',err:'<span class="exp">com problema</span>'})[st]||''}</b></p>
+  ${user?`<p class="hint" style="margin:0 0 8px">Conta: ${esc(user.email)}</p>`:''}${st==='err'&&msg?`<div class="note">${esc(msg)}</div>`:''}
   <label>Convite para o outro celular</label><textarea id="sy-inv" readonly rows="3" style="width:100%;font-size:11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--tx);padding:8px">${esc(invite())}</textarea>
   <div class="two" style="margin-top:8px"><button class="btn sec" data-act="copyinv">📋 Copiar</button><button class="btn sec" data-act="wainv">💬 WhatsApp</button></div>
-  <p class="hint">No outro celular: abra este app → Mais → Sincronização → cole o convite → Conectar. ⚠️ O convite dá acesso total aos dados: envie só para quem confia.</p>
-  <button class="btn sec block" style="margin-top:10px" data-act="disconnect">Desligar neste celular</button></div>`;
- return `<div class="card"><h2>☁️ Sincronização entre os celulares</h2>
-  <p class="hint" style="margin:0 0 8px">Ligue uma vez e tudo que um lançar aparece no outro, com fotos. Precisa de um projeto Firebase gratuito — passo a passo em <b>CONFIGURAR-FIREBASE.md</b>.</p>
-  <label>Cole aqui a configuração do Firebase <u>ou</u> o convite do outro celular</label>
-  <textarea id="sy-in" rows="4" placeholder='const firebaseConfig = { apiKey: "...", ... }' style="width:100%;font-size:12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--tx);padding:8px"></textarea>
-  <label>Código da família (deixe vazio para gerar um novo)</label><input type="text" id="sy-code" autocapitalize="off" placeholder="gerado automaticamente">
-  <button class="btn block" style="margin-top:12px" data-act="connect">Conectar</button></div>`}
+  <p class="hint">O convite só leva a configuração do app. Quem entrar precisa ter o e-mail liberado nas regras do Firebase.</p>
+  <div class="two" style="margin-top:6px"><button class="btn sec" data-act="logout">Sair da conta</button><button class="btn sec" data-act="disconnect">Desligar</button></div></div>`}
 
 /* ---------- eventos ---------- */
 const A={
@@ -494,7 +524,7 @@ const A={
  zoomprev(el){$('#zoom img').src=el.src;$('#zoom').classList.add('on')},unzoom(){$('#zoom').classList.remove('on')},
  import(){$('#fImp').value='';$('#fImp').click()},restore(){$('#fBak').value='';$('#fBak').click()},
  export:exportBackup,csv:exportCSV,doimport:doImport,
- connect,disconnect,copyinv,wainv,
+ connect,disconnect,copyinv,wainv,login,signup,gauth,resetpw,verified,resend,logout,gosync(){view='more';render();scrollTo(0,0)},
  applysug(){Object.assign(db.budgets,suggestions());save();render();toast('Metas aplicadas ✔')},
  demo(){db.tx.push(...demo());save();render()},
  cleardemo(){db.tx=db.tx.filter(t=>!t.demo);save();render()},
