@@ -71,6 +71,9 @@ input[type=text],input[type=date],input[type=number],input[type=search],select{w
 .imp .m small{font-size:11px}
 #toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:#1b2430;color:#fff;padding:10px 16px;border-radius:12px;z-index:50;display:none;max-width:90%}
 .zoom{position:fixed;inset:0;background:#000d;z-index:40;display:none;place-items:center}.zoom.on{display:grid}.zoom img{max-width:96%;max-height:92%}
+.tb{font-size:14px;line-height:1.5}.tb ul{padding-left:18px;margin:8px 0}.tb li{margin:6px 0}.tb p{margin:6px 0}
+.dots{display:flex;gap:6px;justify-content:center;margin-top:14px}.dots i{width:7px;height:7px;border-radius:50%;background:var(--line)}.dots i.on{background:var(--pri);width:18px;border-radius:4px}
+details.hp{border-bottom:1px solid var(--line);padding:11px 0}details.hp:last-child{border:0}details.hp summary{cursor:pointer;font-weight:600;list-style:none}details.hp summary::-webkit-details-marker{display:none}details.hp summary::after{content:'›';float:right;color:var(--mut);transition:.2s}details.hp[open] summary::after{transform:rotate(90deg)}
 .note{background:var(--bg);border-radius:12px;padding:12px;font-size:13px;color:var(--mut);margin:10px 0}
 </style>
 </head>
@@ -177,6 +180,28 @@ function bars6(){const ms=[...Array(6)].map((_,i)=>shiftM(month,i-5));const d=ms
 /* ---------- telas ---------- */
 function rowHTML(t){const c=cat(t.cat,t.type);return `<div class="row" data-act="edit" data-id="${t.id}"><span class="ic" style="background:${c.c}26">${c.i}</span><div class="m"><b>${esc(t.desc)}</b><small>${fdate(t.date)} · ${esc(t.cat)} · ${esc(whoName(t.who))}${t.img?' · 📎':''}</small></div><span class="v ${t.type}">${t.type==='exp'?'−':'+'}${brl(t.amount)}</span></div>`}
 
+/* ---------- tutorial ---------- */
+const TK='nossas-financas.tour';
+const TOPICS=[
+ {i:'👋',t:'Bem-vindos!',b:'<p>O <b>Nossas Finanças</b> ajuda vocês dois a saberem para onde vai o dinheiro e a guardar mais.</p><ul><li><b>Início</b>: resumo do mês, gráficos e alertas</li><li><b>Lançamentos</b>: tudo que entrou e saiu</li><li><b>+</b> (botão do meio): lançar um gasto ou receita</li><li><b>Metas e dicas</b>: limites, meta de economia e o consultor</li><li><b>Mais</b>: importar extrato, sincronizar, backup e ajuda</li></ul><p>Use as setas ‹ › no topo para trocar de mês.</p>'},
+ {i:'➕',t:'Lançar gastos e receitas',b:'<ul><li>Toque no <b>+</b>, escolha <b>Despesa</b> ou <b>Receita</b> e digite o valor.</li><li>Ao escrever a descrição (ex.: “Posto Shell”), a <b>categoria é sugerida</b> sozinha. O app aprende com suas correções.</li><li><b>Quem?</b> indica se foi você, seu par ou o casal.</li><li><b>Repetir mensalmente</b> serve para contas fixas como aluguel e internet: cria os próximos meses de uma vez.</li><li>Para <b>editar ou excluir</b>, toque no lançamento na lista.</li></ul>'},
+ {i:'📷',t:'Comprovantes e notas',b:'<ul><li>No lançamento, toque em <b>📷 Foto / arquivo</b> e fotografe o cupom do mercado ou do posto.</li><li>O app <b>lê valor, data e local</b> e preenche o lançamento. Confira antes de salvar.</li><li>Funciona melhor com cupom plano, bem iluminado e sem dobras.</li><li>A leitura automática precisa de <b>internet</b>. Sem ela, preencha à mão: a foto é guardada do mesmo jeito.</li><li>Lançamentos com foto mostram 📎 na lista.</li></ul>'},
+ {i:'🏦',t:'Importar extrato do banco',b:'<ul><li>No app ou site do banco/cartão, baixe o <b>extrato em OFX ou CSV</b>.</li><li>Vá em <b>Mais → Importar OFX / CSV</b> e escolha o arquivo.</li><li>Revise a lista: ajuste categorias e desmarque o que não quiser.</li><li>Escolha de <b>quem</b> é o extrato e confirme.</li><li>Lançamentos já importados antes são <b>ignorados</b>, então não duplica se importar o mesmo período duas vezes.</li></ul>'},
+ {i:'🧾',t:'Lançamentos e buscas',b:'<ul><li>A aba <b>Lançamentos</b> mostra o mês agrupado por dia.</li><li>Use a <b>busca</b> e os filtros de <b>pessoa</b> e <b>categoria</b> para achar qualquer gasto.</li><li>Toque num item para editar, trocar a foto ou excluir.</li></ul>'},
+ {i:'🎯',t:'Metas, limites e consultor',b:'<ul><li><b>Meta de economia</b>: defina quanto % da renda querem guardar (sugestão: 20%). Uma barra mostra o progresso do mês.</li><li><b>Limites por categoria</b>: o app avisa quando passar de 80%.</li><li><b>Consultor</b>: aponta onde mais gastam, o que subiu em relação ao mês anterior, quanto as assinaturas custam por ano e dá dicas de economia.</li><li><b>Aplicar metas sugeridas</b>: com 1 mês de uso, o app propõe limites com base na média de vocês menos 10%.</li></ul>'},
+ {i:'☁️',t:'Sincronizar os dois celulares',b:'<ul><li>Em <b>Mais → Sincronização</b>, quem começa cola a configuração do Firebase e toca em <b>Conectar</b>.</li><li>Depois entra com <b>Google</b> ou <b>e-mail e senha</b>.</li><li>Toque em <b>WhatsApp</b> para enviar o <b>convite</b> ao outro celular. Lá, é só colar o convite, conectar e entrar com o e-mail dele(a).</li><li>Só os e-mails liberados nas regras do Firebase acessam os dados.</li><li>No topo, <b>☁️ sincronizado</b> indica que está tudo em dia. Funciona offline e envia quando a internet volta.</li></ul>'},
+ {i:'💾',t:'Backup e planilha',b:'<ul><li><b>Exportar backup</b> gera um arquivo com tudo, inclusive as fotos. Guarde no Drive ou envie para si.</li><li><b>Importar backup</b> junta os dados de um arquivo aos que já existem, sem duplicar.</li><li><b>Exportar planilha (CSV)</b> abre no Excel ou Google Planilhas.</li><li><b>Apagar tudo</b> remove todos os lançamentos. Com a sincronização ligada, apaga nos dois celulares. Faça backup antes.</li></ul>'},
+ {i:'📲',t:'Dicas de uso',b:'<ul><li><b>Instale como app</b>: no Safari, toque em Compartilhar → <b>Adicionar à Tela de Início</b>.</li><li>Troque “Eu / Esposa” pelos nomes de vocês em <b>Mais → Nomes</b>.</li><li>Lance os gastos no dia: leva 10 segundos e deixa as dicas bem mais precisas.</li><li>Dê uma olhada no <b>Consultor</b> uma vez por semana.</li><li>Esse tutorial fica sempre em <b>Mais → Ajuda e tutorial</b>.</li></ul>'}];
+let TI=0;
+function openTour(i){TI=Math.max(0,Math.min(TOPICS.length-1,i));const t=TOPICS[TI],last=TI===TOPICS.length-1;
+ sheet(`<div style="text-align:center;font-size:46px;line-height:1.2">${t.i}</div><h3 style="justify-content:center;margin-top:6px">${t.t}</h3><div class="tb">${t.b}</div>
+ <div class="dots">${TOPICS.map((_,k)=>`<i class="${k===TI?'on':''}"></i>`).join('')}</div>
+ <div style="display:flex;gap:10px;margin-top:16px">${TI?'<button class="btn sec" data-act="tourprev">Voltar</button>':''}<button class="btn" style="flex:1" data-act="${last?'close':'tournext'}">${last?'Começar a usar 🚀':'Próximo'}</button></div>
+ ${last?'':'<button class="btn sec block" style="margin-top:8px;border:0" data-act="close">Pular tutorial</button>'}`);
+ try{localStorage.setItem(TK,'1')}catch(e){}}
+const helpCard=()=>`<div class="card"><h2>📖 Ajuda e tutorial</h2><button class="btn block" data-act="starttour">▶️ Ver tutorial passo a passo</button>
+ <div style="margin-top:8px">${TOPICS.map(t=>`<details class="hp"><summary>${t.i} ${t.t}</summary><div class="tb">${t.b}</div></details>`).join('')}</div></div>`;
+
 function home(){
  const tx=mtx(month),inc=sum(tx,'inc'),exp=sum(tx,'exp'),bal=inc-exp;
  if(!db.tx.length)return `<div class="card empty"><big>🌱</big><b>Vamos começar!</b><p>Toque no <b>+</b> para lançar um gasto, fotografar um comprovante ou importe o extrato do banco em <b>Mais</b>.</p><button class="btn sec" data-act="demo">Ver com dados de exemplo</button></div>`;
@@ -268,7 +293,7 @@ function budget(){
   <input type="number" inputmode="decimal" min="0" step="10" placeholder="Meta" value="${l||''}" data-bud="${esc(c.n)}" aria-label="Meta de ${c.n}"></div>
   ${l?`<div class="bar" style="margin-top:6px"><i style="width:${Math.min(100,p*100)}%;background:${p>=1?'var(--exp)':p>=.8?'var(--warn)':c.c}"></i></div>`:''}</div>`}).join('')}</div>`}
 
-function more(){return `
+function more(){return helpCard()+`
  <div class="card"><h2>🏦 Importar extrato do banco</h2>
   <p class="hint" style="margin:0 0 10px">Baixe o extrato (OFX ou CSV) no app/site do seu banco ou cartão e importe aqui. As categorias são sugeridas automaticamente e o app aprende com suas correções. Lançamentos repetidos são ignorados.</p>
   <button class="btn block" data-act="import">Importar OFX / CSV</button>
@@ -524,6 +549,7 @@ const A={
  zoomprev(el){$('#zoom img').src=el.src;$('#zoom').classList.add('on')},unzoom(){$('#zoom').classList.remove('on')},
  import(){$('#fImp').value='';$('#fImp').click()},restore(){$('#fBak').value='';$('#fBak').click()},
  export:exportBackup,csv:exportCSV,doimport:doImport,
+ starttour(){openTour(0)},tournext(){openTour(TI+1)},tourprev(){openTour(TI-1)},
  connect,disconnect,copyinv,wainv,login,signup,gauth,resetpw,verified,resend,logout,gosync(){view='more';render();scrollTo(0,0)},
  applysug(){Object.assign(db.budgets,suggestions());save();render();toast('Metas aplicadas ✔')},
  demo(){db.tx.push(...demo());save();render()},
@@ -546,6 +572,7 @@ document.addEventListener('input',e=>{if(e.target.id==='q'){flt.q=e.target.value
 $('#fImp').onchange=e=>e.target.files[0]&&startImport(e.target.files[0]).catch(()=>toast('Não consegui ler o arquivo'));
 $('#fBak').onchange=e=>e.target.files[0]&&restore(e.target.files[0]);
 render();startSync();
+try{if(!localStorage.getItem(TK))setTimeout(()=>openTour(0),500)}catch(e){}
 </script>
 </body>
 </html>
